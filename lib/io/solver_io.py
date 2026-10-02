@@ -19,16 +19,16 @@ import sys
 class SolverIO:
 
     IO_REGISTRY = {
-        'Artery':                   ('lib.io.new.artery_io',    'ArteryIO'),
-        'MicrovascularNetwork':     ('lib.io.new.network_io',  'NetworkIO'),
-        'ToneRegulation':           ('lib.io.new.tone_io',        'ToneIO'),
-        'DirectToneRegulation':     ('lib.io.new.tone_io',        'ToneIO'),
-        'RelativeToneRegulation':   ('lib.io.new.tone_io',        'ToneIO'),
-        'VectorisedToneRegulation': ('lib.io.new.vec_tone_io', 'VecToneIO'),
-        'Windkessel':          ('lib.io.new.windkessel_io', 'WindkesselIO'),
-        'VariableWindkessel':       ('lib.io.new.var_wk_io',     'VarWKIO'),
-        'OxygenTransport':          ('lib.io.new.oxygen_io',    'OxygenIO'),
-        'CellularMetabolism':  ('lib.io.new.metabolism_io', 'MetabolismIO'),
+        'Artery':                   ('lib.io.artery_io',    'ArteryIO'),
+        'MicrovascularNetwork':     ('lib.io.network_io',  'NetworkIO'),
+        'ToneRegulation':           ('lib.io.tone_io',        'ToneIO'),
+        'DirectToneRegulation':     ('lib.io.tone_io',        'ToneIO'),
+        'RelativeToneRegulation':   ('lib.io.tone_io',        'ToneIO'),
+        'VectorisedToneRegulation': ('lib.io.vec_tone_io', 'VecToneIO'),
+        'Windkessel':               ('lib.io.windkessel_io', 'WindkesselIO'),
+        'VariableWindkessel':       ('lib.io.var_wk_io',     'VarWKIO'),
+        'OxygenTransport':          ('lib.io.oxygen_io',    'OxygenIO'),
+        'CellularMetabolism':       ('lib.io.metabolism_io', 'MetabolismIO'),
     }
 
     def __init__(self, files, sargs, comm):

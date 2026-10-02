@@ -19,8 +19,8 @@ import sys
 import time
 
 # * INTERNAL PACKAGES
-from lib.io.new.base_io import BaseIO as IO
-from lib.etc.registries import SOLVER_REGISTRY, MODEL_REGISTRY
+from lib.io.base_io     import BaseIO as IO
+from lib.etc.registries import SOLVER_REGISTRY
 
 #%% CLASS
 class OVA:

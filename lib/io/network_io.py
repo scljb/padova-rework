@@ -11,7 +11,7 @@ Class housing methods for input and output processing.
 from numpy import column_stack, savetxt
 
 #* INTERNAL PACKAGES
-from lib.io.new.base_io import BaseIO
+from lib.io.base_io import BaseIO
 
 
 #%% CLASS

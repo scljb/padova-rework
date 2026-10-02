@@ -8,7 +8,7 @@ Class housing methods for input and output processing.
 #%% PACKAGES
 
 #* INTERNAL PACKAGES
-from lib.io.new.base_io import BaseIO
+from lib.io.base_io import BaseIO
 
 
 #%% CLASS

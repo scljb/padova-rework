@@ -7,7 +7,7 @@ date: 30/09/26
 import numpy as np
 
 #* INTERNAL PACKAGES
-from lib.io.new.base_io import BaseIO
+from lib.io.base_io import BaseIO
 
 
 #%% CLASS

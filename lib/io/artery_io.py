@@ -1,6 +1,6 @@
 """
 auth: L. J. Barratt
-Created on 08/05/26
+Created on 14/09/26
 
 Class housing methods for input and output processing.
 """
@@ -20,18 +20,21 @@ from lib.io.base_io import BaseIO
 
 class ArteryIO(BaseIO):
         
-    inputs  = ['solution', 'fluid', 'inflow', 'network']
+    inputs  = ['solution', 'fluid', 'network']
 
-    def extras(self):
+    def __init__(self, file):
 
-        # # READ CSV FOR NETWORK PARAMETERS
+        super().__init__(file)
+
+        # # READ FROM CSV FILE FOR NETWORK DATA
         self.read_from_csv()
 
         # ? Check length of parameter lists against given number of arteries
         expected_len = self.network['number_of_arteries'][0]
         for key, value in self.vessel.items():
             if key != 'nu':
-                assert len(value) == expected_len, f"vessel['{key}'] has wrong length"
+                if len(value) != expected_len:
+                    raise ValueError("vessel['{key}'] has wrong length")
 
 
     def read_from_csv(self):
@@ -45,7 +48,7 @@ class ArteryIO(BaseIO):
         df = read_excel(file_path, skiprows=1, engine='openpyxl')
 
         # # STUFF
-        #* Select columns for parameter selection
+        # * Select columns for parameter selection
         parameter_columns = [col for i, col in enumerate(df.columns) if i >= 3]
         variable_names = [
             ( (col.split(', ')[1].split(' [')[0])
@@ -53,7 +56,7 @@ class ArteryIO(BaseIO):
             for col in parameter_columns
         ]
 
-        #* Create vessel dict
+        # * Create vessel dict
         vessel = {}
         for var, col in zip(variable_names[:12], parameter_columns[:12]):
             if var != 'state':
@@ -72,7 +75,7 @@ class ArteryIO(BaseIO):
             vessel['nu'] = [0.5]
 
 
-        #* Create outflow dict
+        # * Create outflow dict
         filtered_df = df[df['Type'].str.strip().str.lower() != 'junction']
 
         outflow = {}
@@ -86,7 +89,7 @@ class ArteryIO(BaseIO):
                     for x in str(val).split(',')
                 ]
 
-        #* Identify Roots/Parents/Daughters/Terminals
+        # * Identify Roots/Parents/Daughters/Terminals
         id_columns = [col for i, col in enumerate(df.columns) if i < 3]
         ids = df[id_columns[0]].tolist()
         pid = df[id_columns[-1]].tolist()
@@ -116,7 +119,17 @@ class ArteryIO(BaseIO):
         self.network['terminals'] = terminals
 
 
-    def write_solution_to_file(self, artery, idx, time):
+    def write_solution(self, step, time, solver, **stuff):
+        '''
+        Intended to be used via the ArterialNetwork solver class.
+        '''
+
+        for artery in solver.local_arteries:
+            self.write_arterial_solution(artery, time)
+
+
+    def write_arterial_solution(self, artery, time):
+
         # # PROCESS DATA
         area, vel = artery.Un.split()
         artery.update_pressure()
@@ -130,6 +143,8 @@ class ArteryIO(BaseIO):
         data = column_stack((x, aver, vver, pver))
 
         # # PRINT TO FILE
+        idx = artery.artery_id
         filename = self.output_dir / f'artery_{idx}/t{time:.6f}.txt'
         savetxt(filename, data, header="x A u p", comments='')
-    
+        
+

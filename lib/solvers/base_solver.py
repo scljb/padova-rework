@@ -10,7 +10,7 @@ from tqdm import tqdm
 import sys
 
 #* INTERNAL LIBRARIES
-from lib.io.new.solver_io  import SolverIO 
+from lib.io.solver_io  import SolverIO 
 from lib.etc.time_function import TimeFunction
 
 #%% CLASS
