@@ -4,6 +4,8 @@ date: 02/09/26
 """
 
 #%% PACKAGES
+
+# * EXTERNAL LIBRARIES
 from numpy import exp, abs, inf, ceil, log2, ones, zeros
 from numpy import linspace, where, argmin, asarray, broadcast_to, \
                   concatenate, full
@@ -33,8 +35,15 @@ class VectorisedToneRegulation:
         r_um     = network.radius0[k:] * 1e6  # [m] -> [um], reference radii
 
         # # COEFFICIENTS
-        self.cmet = 0.0
+        # ? define passive and active tension coefficients
         self.update_coefficients(r_um)
+
+        # ! metabolic coefficient
+        # todo : define this value
+        self.cmet = zeros(self.n)
+
+        # ? time-dependent sympathetic nerve activity (updated by solver)
+        self.csna = zeros(self.n)
 
         # ? tone and tension in the basal state
         # set after reaching a steady state lmbda
@@ -75,7 +84,7 @@ class VectorisedToneRegulation:
         res  = asarray([residual(full(self.n, g)) for g in grid]).T
 
         # ? sign changes, per generation
-        sc      = res[:, :-1] * res[:, 1:] <= 0
+        sc       = res[:, :-1] * res[:, 1:] <= 0
         has_root = sc.any(axis=1)
         if not all(has_root):
             bad = self.gen[~has_root]
@@ -120,7 +129,13 @@ class VectorisedToneRegulation:
     def _rates(self, lmbda, theta):
 
         # ? smooth muscle tone
-        S_tone = self.myo_term - self.tau_term - self.met_term + self.c_tone
+        S_tone = ( 
+            + self.myo_term 
+            - self.tau_term
+            - self.met_term 
+            + self.c_tone 
+            + self.csna
+        )
 
         # ? activation ode
         dtheta = ( expit(S_tone) - theta ) / self.tau_theta
@@ -152,8 +167,13 @@ class VectorisedToneRegulation:
         Set basal tone and tension values for a current steady state.
         '''
 
-        # ? basal tone and tension 
-        self.c_tone = self.tau_term + self.met_term - self.myo_term
+        # ? basal tone and tension         
+        self.c_tone = ( 
+            - self.myo_term 
+            + self.tau_term
+            + self.met_term 
+            - self.csna
+        )
         self.T_b  = self.T_cur.copy()
 
         # ? basal lmbda
@@ -249,6 +269,15 @@ class VectorisedToneRegulation:
     @met_term.setter
     def met_term(self, oxygen):
         self._met_term = self.cmet * self._as_array(oxygen)
+
+
+    @property
+    def csna(self):
+        return self._csna
+
+    @csna.setter
+    def csna(self, sna):
+        self._csna = zeros(self.n) + sna
 
 
 

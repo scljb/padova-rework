@@ -52,8 +52,6 @@ class VariableArterialWK(ArterialNetwork):
             c0     = artery.c0o
             Rn     = artery.rho * c0 / artery.A0o
 
-            print(r0, c0, Rn)
-
             # ? instance class
             self.wk_models[ii] = VariableWindkessel(
                 self.dt, 

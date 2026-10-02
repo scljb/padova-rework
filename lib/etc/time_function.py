@@ -16,6 +16,7 @@ class TimeFunction:
         'gaussian', 
         'sinusoidal', 
         'step', 
+        'box',
         'constant'
     }
 
@@ -121,6 +122,24 @@ class TimeFunction:
         return self.y1 + alpha*( self.y2-self.y1 )
 
 
+# # ############################# ############ #############################
+# # ############################# BOX FUNCTION #############################
+# # ############################# ############ #############################
+
+
+    def _setup_box(self, params):
+        self.y1     = params['y1'][0]
+        self.dy     = atleast_1d(asarray(params['dy'], dtype=float))
+        self.delta1 = atleast_1d(asarray(params['delta1'], dtype=float))
+        self.delta2 = atleast_1d(asarray(params['delta2'], dtype=float))
+
+
+    def _eval_box(self, t):
+        active = (t >= self.delta1) & (t < self.delta2)
+
+        return self.y1 + (active * self.dy).sum()
+
+    
 # # ############################### ######## ###############################
 # # ############################### CONSTANT ###############################
 # # ############################### ######## ###############################

@@ -16,6 +16,8 @@ from lib.solvers.base_solver               import BaseSolver
 from lib.models.variable_windkessel        import VariableWindkessel
 from lib.models.vectorised_tone_regulation import VectorisedToneRegulation
 
+from lib.etc.time_function import TimeFunction
+
 # unit conversions
 PA_PER_M_TO_DYN_PER_CM = 1e3
 PA_TO_DYN_PER_CM2      = 10
@@ -59,8 +61,16 @@ class WindkesselTone(BaseSolver):
         self.tone = VectorisedToneRegulation(
             tone_io.solution['dt'][0],
             time_constants,
-            self.wk
+            self.wk,
         )
+
+        # ? optional SNA term for tone model, 0 if not provided
+        # term is equal across generations
+        if tone_io.optional.sna is not None:
+            self.sna = TimeFunction(tone_io.optional.sna)
+        else:
+            params   = { 'form': ['constant'], 'value': [0.0] }
+            self.sna = TimeFunction(params)
 
         # # STORE PARAMETERS
         # * Time parameters
@@ -71,8 +81,6 @@ class WindkesselTone(BaseSolver):
         # step increments
         self.step_wk   = self.wk.dt   / self.dt
         self.step_tone = self.tone.dt / self.dt
-
-        print(f'Rn={self.wk.Rn}, C={self.wk.C}')
 
 
     def initialise_solver(
@@ -210,6 +218,9 @@ class WindkesselTone(BaseSolver):
         self.tone.myo_term = tension * PA_PER_M_TO_DYN_PER_CM
         self.tone.tau_term = shear   * PA_TO_DYN_PER_CM2
 
+        # time-dependent sna term
+        self.tone.csna = self.sna.compute_value(self.t)
+
 
     @property
     def network_tension(self):
@@ -245,243 +256,3 @@ class WindkesselTone(BaseSolver):
     @ceff_tension.setter
     def ceff_tension(self, value):
         self._ceff_tension = value
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    def old_init_solver(self, maxiter=50, tol=1e-8, alpha=1.0, called=False):
-        '''
-        Find the scalar lmbda where the coupled (WK + tone) system is at steady
-        state for the initial root pressure, then make that the reference state.
-        '''
-
-        # ? set initial state
-        self.update_windkessel_inflow()
-        self.tone.lmbda = 1.0
-
-        # print(
-        #     f'{'itr':6}\t',
-        #     f'{'Rn':12}\t', 
-        #     f'{'Rm':12}\t', 
-        #     f'{'Rf':12}\t', 
-        #     f'{'RT':12}\t'
-        # )
-
-        # print(
-        #     f'{-1:5}',
-        #     f'{self.wk.Rn:.6e}', 
-        #     f'{self.wk.Rm:.6e}', 
-        #     f'{self.wk.Rf:.6e}', 
-        #     f'{self.wk.RT:.6e}'
-        # )
-
-        # exit()
-
-        st = self.wk.generation_state()
-        k = self.wk.Nmid
-
-        print(
-            f'Radius per generation: {st['radius'][k:]*1e6}\n'
-            f'Vessels per generation: {2**st['gen'][k:]}'
-        )
-
-        # # LOOP OVER COUPLED SYSTEM
-        for itr in range(maxiter):
-
-            # ? windkessel at steady state
-            self.wk.steady_state_solve()
-
-            # ? tone at steady state
-            self.update_tone_state()        # T, tau in far compartment of WK
-            
-            # ! debugging            
-            print(
-                f'T_cur / T_wall(lmbda=1) per generation: {self.tone.reference_ratio()}'
-            )
-            # ! gniggubed
-
-            self.tone.steady_state_solve()  # lmbda, c_tone, T_ref
-
-            # ? check convergence
-            res = abs(self.tone.lmbda - 1.0)
-            if res.max() < tol:
-                break
-
-            # ? apply lmbda to the far compartment
-            lmbda = 1.0 + alpha * (self.tone.lmbda - 1.0)
-            self.wk.apply_dilation(lmbda)
-
-            st = self.wk.generation_state()
-            k  = self.wk.Nmid
-            # fun = lambda x: (
-            #     self.tone._Tpassive(x) + self.tone.theta * self.tone._Tactive(x)
-            # )
-            # tt = fun(lmbda)
-
-            # print(
-            #     f'{itr:5}',
-            #     f'{st['tension'][k:]}',
-            # )
-
-
-
-            # print(
-            #     f'{itr:5}\t',
-            #     f'{self.wk.Rn:.6e}\t', 
-            #     f'{self.wk.Rm:.6e}\t', 
-            #     f'{self.wk.Rf:.6e}\t', 
-            #     f'{self.wk.RT:.6e}\t'
-            # )
-
-            # ? set new reference state
-            self.wk.set_reference()
-            self.tone.set_reference(self.wk)
-
-
-        else:
-            raise RuntimeError(f'no convergence, |lmbda-1|={res}')
-            
-
-        # ? write initial condition
-        if not called:
-            self.m_attrs = self.get_model_dict(a=self)
-            self.io.write_solutions(-1, 0, **self.m_attrs)
-
-
-
-def init_solver(self, maxiter=50, tol=1e-8, alpha=0.5):
-        '''
-        Find lmbda of each generation  
-
-        Find the scalar lmbda where the coupled (WK + tone) system is at steady
-        state for the initial root pressure, then make that the reference state.
-        '''
-
-        # ? set initial state
-        self.update_windkessel_inflow()
-        self.tone.lmbda = 1.0
-
-
-        # # LOOP OVER COUPLED SYSTEM
-        for itr in range(maxiter):
-
-            lmbda = self.tone.lmbda.copy()
-
-            # ? windkessel at steady state, solve for pcap
-            self.wk.steady_state_solve()
-
-            # ? update the current T, tau in the tone model
-            self.update_tone_state()
-
-            # ? tone at steady state, solve for lmbda
-            self.tone.steady_state_solve()
-
-            # ? check convergence of lmbda
-            res = abs(self.tone.lmbda - 1.0)
-            if res.max() < tol:
-                break
-
-            # ? dampened solution
-            lmbda = 1.0 + alpha * (self.tone.lmbda - 1.0)
-
-            # ? apply lmbda to the far compartment
-            self.wk.apply_dilation(lmbda)# sollmbda, c_tone, T_ref
-
-        else:
-            raise RuntimeError(f'no convergence, |lmbda-1|={res}')
-
-
-        # ? set new reference state in wk
-        self.wk.set_reference()
-        self.tone.set_reference()
-
-
-def Old_initialise_solver(
-        self, 
-        maxiter=2000, 
-        tol=1e-6, 
-        alpha=0.000001, 
-        called=False
-    ):
-    '''
-    Find the scalar lmbda, for each generation, where the coupled (WK + tone) system is at steady state for the initial root pressure. Then, set the basal state in the tone model.
-    '''
-
-    # ? set initial state
-    self.update_windkessel_inflow()
-
-    # # SOLVE FOR STEADY STATE
-    for itr in range(maxiter):
-
-        Rf_old    = self.wk.Rf
-        lmbda_old = self.tone.lmbda.copy()
-
-        # ? windkessel at steady state, solve for pcap
-        self.wk.steady_state_solve()
-
-        # ? update the current T, tau in the tone model
-        self.update_tone_state()
-
-        # ? tone at steady state, solve for lmbda
-        self.tone.steady_state_solve()
-        lmbda = self.tone.lmbda.copy()
-
-        # ? apply under-relaxed lmbda to WK tree
-        lmbda_update = (1-alpha)*lmbda_old + alpha*lmbda
-        self.wk.apply_dilation(lmbda_update)
-
-        # * lambda residual
-        res_lmbda = max(abs(lmbda_update - lmbda_old))
-
-        # * Rf residual
-        Rf = self.wk.Rf
-        res_Rf = abs(Rf - Rf_old) / max([abs(Rf_old), 1e-30])
-
-        if res_lmbda < tol and res_Rf < tol:
-            break
-
-        # ! debugging
-        print(
-            itr,
-            f"lambda_eq =", round(lmbda, 6),
-            f"lambda_wk =", round(lmbda_update, 6),
-            f"res lmbda = {res_lmbda:.6f}",
-            f"res Rf = {res_Rf:.6f}",
-            # f"Rf = {self.wk.Rf}"
-        )
-        # ! ginggubed
-
-    else:
-        raise RuntimeError(f'no convergence in {itr} iterations, res={res_lmbda}, {res_Rf}')
-    
-    
-    # # SET THE NEW REFERENCE STATE
-    self.tone.set_basal_state()
-
-    # ? write initial condition
-    if not called:
-        self.m_attrs = self.get_model_dict(a=self)
-        self.io.write_solutions(-1, 0, **self.m_attrs)
-
-    print("END INIT")
-    print("tone:", self.tone.lmbda)
-    print("wk:  ", self.wk.lmbda)
-    print("diff:", self.wk.lmbda - self.tone.lmbda)

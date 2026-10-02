@@ -14,7 +14,8 @@ from lib.io.base_io import BaseIO
 
 class VecToneIO(BaseIO):
         
-    inputs  = ['solution', 'time_constants']
+    inputs  = ('solution', 'time_constants')
+    optional_inputs = ('sna',)
 
     def write_solution(self, step, time, model, **stuff):
         lmbda = np.asarray(model.lmbda)
