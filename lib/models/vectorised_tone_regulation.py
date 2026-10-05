@@ -13,6 +13,8 @@ from numpy import linspace, where, argmin, asarray, broadcast_to, \
 from scipy.integrate import solve_ivp
 from scipy.special   import expit
 
+import warnings
+
 # pressure at which the passive diameter Dp100 is defined [Pa]
 P100 = 100.0 * 133.322
 
@@ -37,10 +39,6 @@ class VectorisedToneRegulation:
         # # COEFFICIENTS
         # ? define passive and active tension coefficients
         self.update_coefficients(r_um)
-
-        # ! metabolic coefficient
-        # todo : define this value
-        self.cmet = zeros(self.n)
 
         # ? time-dependent sympathetic nerve activity (updated by solver)
         self.csna = zeros(self.n)
@@ -192,12 +190,12 @@ class VectorisedToneRegulation:
 
         d = 2 * asarray(r, dtype=float)
 
-        # outside = (d < 40) | (d > 180)
-        # if any(outside):
-        #     warnings.warn(
-        #         'Coefficient fits are valid for d = 40-180 um. Generation(s) '
-        #         f'{self.gen[outside]} have d = {d[outside].round(0)} μm.'
-        #     )
+        outside = (d < 40) | (d > 180)
+        if any(outside):
+            warnings.warn(
+                'Coefficient fits are valid for d = 40-180 um. Generation(s) '
+                f'{self.gen[outside]} have d = {d[outside].round(0)} μm.'
+            )
 
         self._compute_tension_coefficients(d)
         self._compute_tone_coefficients(d)
@@ -208,16 +206,26 @@ class VectorisedToneRegulation:
         r : vessel radius [um]. 
         Valid range d ~ 40-180 micro meters.
         Sets cpas1, cpas2, cact1, cact2, cact3 from diameter, d [μm].
+
+        Relations from Fry, Roy, and Secomb (2013).
         '''
 
-        # ? fitted magnitudes
-        self.cpas1 = -0.08507 + 6.666249*d  # linear, R2=1.000000
-        self.cact1 = 1.30007  * d**1.47995  # power law, R2=0.999999
+        # # PASSIVE TENSION
+        # ? passive tension at lmbda=1
+        self.cpas1 = 6.666*d
 
-        # ? shape parameters
-        self.cpas2 = 12.51775 - 0.026982*d      # linear, R2=0.999999
-        self.cact2 = 0.77296  - 0.000590*d      # linear, R2=1.000000
-        self.cact3 = 0.41499  - 0.000800*d      # linear, R2=1.000000
+        # ? sensitivity
+        self.cpas2 = 12.52 - 0.02700*d
+
+        # # ACTIVE TENSION
+        # ? peak active
+        self.cact1 = 1.3 * d**1.48
+
+        # ? length dependence
+        self.cact2 = 0.773 - 0.00059*d
+
+        # ? active range
+        self.cact3 = 0.415 - 0.00080*d
 
 
     def _compute_tone_coefficients(self, d):
@@ -225,10 +233,13 @@ class VectorisedToneRegulation:
         r : vessel radius [um]. 
         Valid range 2r = d ~ 40-180 micro meters.
         Sets cmyo and ctau from diameter.
+
+        Relations from Fry, Roy, and Secomb (2013).
         '''
 
-        self.cmyo  = 1.3665 / d;
-        self.ctau  = 0.0258 * d;
+        self.cmyo = 1.3690 / d;
+        self.ctau = 0.0258;
+        self.cmet = 5000;
     
 
     def _as_array(self, x):

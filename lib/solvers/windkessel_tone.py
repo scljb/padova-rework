@@ -51,7 +51,6 @@ class WindkesselTone(BaseSolver):
         frctl = self.extract_all_values(wk_io.fractal, 0)
         self.wk = VariableWindkessel(
             wk_io.solution['dt'][0],    # time step
-            self.rc.compute_value(0),   # initial pin
             r0, Rn, c0,                 # properties of feed artery
             fluid, frctl                # fluid & fractal properties
         )

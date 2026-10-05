@@ -80,8 +80,9 @@ class SkeletalMuscle(BaseSolver):
     def initialise_solver(self, called=False):
 
         # # SET INITIAL CONDITIONS
-        self.update_muscular_flow()
-        self.update_atp_utilisation()
+        if not called:
+            self.update_muscular_flow()
+            self.update_atp_utilisation()
         
         # # METABOLIC SYSTEM IN ATP HOMEOSTASIS
         oxphos = self.CM.compute_steady_state_phioxphos()
@@ -117,6 +118,22 @@ class SkeletalMuscle(BaseSolver):
 
         # # UPDATE TIME
         self.t += self.dt
+
+
+    def update_muscular_flow(self):
+        flow = self.rc.compute_value(self.t)
+        self.O2.update_flow(flow)
+
+
+    def update_atp_utilisation(self):
+        katpase = self.katpase.compute_value(self.t)
+        self.CM.update_katpase(katpase)
+
+
+    def update_oxygen_utilisation(self):
+        oxphos = self.CM.compute_phioxphos(self.CM.adp, self.O2.o2tis)
+        self.O2.update_phioxphos(oxphos)
+        self.CM.update_phioxphos(oxphos)
 
 
     def coupled_step(self, step):
@@ -155,23 +172,6 @@ class SkeletalMuscle(BaseSolver):
         # # UPDATE TIME
         self.t += self.dt
 
-
-    def update_muscular_flow(self):
-        flow = self.rc.compute_value(self.t)
-        self.O2.update_flow(flow)
-
-
-    def update_atp_utilisation(self):
-        katpase = self.katpase.compute_value(self.t)
-        self.CM.update_katpase(katpase)
-
-
-    def update_oxygen_utilisation(self):
-        oxphos = self.CM.compute_phioxphos(self.CM.adp, self.O2.o2tis)
-        self.O2.update_phioxphos(oxphos)
-        self.CM.update_phioxphos(oxphos)
-
-
     def _combined_rates(self, t, y):
         atp, pcr, o2cap, o2tis = y
         adp = self.CM.cat - atp
@@ -186,39 +186,3 @@ class SkeletalMuscle(BaseSolver):
         do2cap, do2tis = self.O2._rates(o2cap, o2tis, phioxphos)
 
         return [dcatp, dcpcr, do2cap, do2tis]
-
-
-# ! ############################################################################
-# !                             DEPRECATED FUNCTIONS
-# ! ############################################################################
-
-
-    def __initialise_solver(self, maxiter=100000, tol=1e-6):
-
-        # # SOLVE UNTIL STEADY STATE IS REACHED 
-        for _ in range(maxiter):
-
-            # ? previous values
-            atp_old  = self.CM.atp
-            pcr_old  = self.CM.pcr
-            o2c_old  = self.O2.o2cap
-            o2t_old  = self.O2.o2tis
-
-            # ? step system
-            self.O2.solve()
-            self.CM.solve()
-            self.update_oxygen_exchange()
-
-            # ? check residual (max change between steps)
-            err = max([
-                abs(self.CM.atp   - atp_old),
-                abs(self.CM.pcr   - pcr_old),
-                abs(self.O2.o2cap - o2c_old),
-                abs(self.O2.o2tis - o2t_old)
-            ])
-
-            if err < tol:
-                return
-
-        raise RuntimeError('SkeletalMuscle solver did not reach steady state.')
-

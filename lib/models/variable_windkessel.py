@@ -21,7 +21,7 @@ from numpy import arange, asarray, sum, cumsum, any, broadcast_to, concatenate
 
 class VariableWindkessel:
     
-    def __init__(self, dt, pin, r0, Rn, c0, fluid, fractal, wkid=0):
+    def __init__(self, dt, r0, Rn, c0, fluid, fractal, wkid=0):
 
         self.windkessel_id = wkid # matches the terminal id of the artery
 
@@ -30,7 +30,7 @@ class VariableWindkessel:
 
         # # FLUID
         # ? boundary pressures
-        self.pin  = pin
+        self.pin  = 0  # initialise to 0, set later
         self.pout = fluid['outflow_pressure']
 
         # ? fluid properties

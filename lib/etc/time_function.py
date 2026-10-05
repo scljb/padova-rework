@@ -17,7 +17,9 @@ class TimeFunction:
         'sinusoidal', 
         'step', 
         'box',
-        'constant'
+        'constant',
+        'heart',
+        'file'
     }
 
     def __init__(self, params):
@@ -151,4 +153,32 @@ class TimeFunction:
 
     def _eval_constant(self, t):
         return self.y
+
+    
+# # ############################# ############ #############################
+# # ############################# HEART  CYCLE #############################
+# # ############################# ############ #############################
+
+
+    def _setup_heart(self, params):
+        self.y = params['value'][0]
+
+
+    def _eval_heart(self, t):
+        return self.y
+
+    
+# # ############################## ########## ##############################
+# # ############################## FROM  FILE ##############################
+# # ############################## ########## ##############################
+
+
+    def _setup_file(self, params):
+        self.y = params['value'][0]
+
+
+    def _eval_file(self, t):
+        return self.y
+
+
 
