@@ -9,6 +9,7 @@ date: 28/09/26
 
 # * EXTERNAL LIBRARIES
 from numpy import max, abs, round
+from math  import isclose
 from sys   import exit
 
 # * INTERNAL LIBRARIES
@@ -40,23 +41,37 @@ class WindkesselTone(BaseSolver):
 
         wk_io   = self.io.model_io['VariableWindkessel']
         tone_io = self.io.model_io['VectorisedToneRegulation']
+        
+        tdt = tone_io.solution['dt'][0]
 
         # # CREATE WINDKESSEL SYSTEM
-        # ? properties of the feed artery
-        r0    = 0.0100
-        Rn    = 2.07e7
-        c0    = 6.1429
+        # ? dt and properties of the feed artery
+        if hasattr(self, 'extras'):
+            # given by parent solver
+            wkdt, r0, c0, Rn, ii = self.extras
 
-        fluid = self.extract_all_values(wk_io.fluid,   0)
-        frctl = self.extract_all_values(wk_io.fractal, 0)
+        else:        
+            # ! testing parameters
+            r0, c0, Rn, ii = 0.0001, 6.1429, 2.07e7, 0
+            wkdt = wk_io.solution.get('dt', [tdt])[0]
+
+        # if wkdt exists, it must be equal to / smaller than tdt
+        if wkdt > tdt:
+            raise ValueError('wk dt must be equal or less than tone dt.')
+
+
+        fluid = self.extract_all_keys(wk_io.fluid)
+        frctl = self.extract_all_keys(wk_io.fractal)
         self.wk = VariableWindkessel(
-            wk_io.solution['dt'][0],    # time step
-            r0, Rn, c0,                 # properties of feed artery
-            fluid, frctl                # fluid & fractal properties
+            wkdt,               # time step
+            r0, Rn, c0,         # properties of feed artery
+            fluid, frctl,       # fluid & fractal properties
+            wkid=ii
         )
 
+
         # # CREATE TONE REGULATION SYSTEM
-        time_constants = self.extract_all_values(tone_io.time_constants, 0)
+        time_constants = self.extract_all_keys(tone_io.time_constants)
         self.tone = VectorisedToneRegulation(
             tone_io.solution['dt'][0],
             time_constants,
@@ -71,29 +86,35 @@ class WindkesselTone(BaseSolver):
             params   = { 'form': ['constant'], 'value': [0.0] }
             self.sna = TimeFunction(params)
 
+
         # # STORE PARAMETERS
         # * Time parameters
         self.t  = 0                               # initial time [s]
-        self.dt = min( self.wk.dt, self.tone.dt ) # global time step
+        self.dt = self.wk.dt                      # global time step
         self.Nt = int(round(self.tend/self.dt))+1 # number of steps
 
-        # step increments
-        self.step_wk   = self.wk.dt   / self.dt
-        self.step_tone = self.tone.dt / self.dt
+        # step increments for tone model
+        ratio = self.tone.dt / self.dt
+        if not isclose(ratio, round(ratio)):
+            raise ValueError('tone dt must be an integer multiple of wk dt.')
+        
+        self.step_tone = int(round(ratio))
+        self._reset_accumulators()
 
 
     def initialise_solver(
         self,
-        maxiter=50,
-        lsiter=30,
+        maxiter=100,
+        lsiter=100,
         tol=1e-6,
         called=False,
+        pressure=None
     ):
         '''
         Find the steady-state lambda per generation satisfying the coupled Windkessel and vaso-tone system.
         '''
 
-        self.update_windkessel_inflow()
+        self.update_windkessel_inflow(pressure)
 
         for itr in range(maxiter):
 
@@ -174,43 +195,55 @@ class WindkesselTone(BaseSolver):
 
         self.tone.set_basal_state()
 
+        # ? write initial solution
         if not called:
             self.m_attrs = self.get_model_dict(a=self)
             self.io.write_solutions(-1, 0, **self.m_attrs)
 
 
-    def step(self, step):
+    def step(self, step, pressure=None):
 
-        # # SOLVE DYNAMIC SYSTEMS
-        # ? windkessel model
-        if not step % self.step_wk:
-            self.update_windkessel_inflow()
+        # # SOLVE WINDKESSEL SYSTEM (EVERY STEP)
+        self.update_windkessel_inflow(pressure)
+        self.wk.apply_dilation(self.tone.lmbda)
+        self.wk.solve()
 
-            self.wk.apply_dilation(self.tone.lmbda)
-            self.wk.solve()
-            
+        # accumulate for time average
+        k  = self.wk.Nmid
+        st = self.wk.generation_state()
+        self._T_sum   = self._T_sum   + st['tension'][k:]
+        self._tau_sum = self._tau_sum + st['tau'][k:]
+        self._nacc   += 1
 
-        # ? tone model
-        if not step % self.step_tone:
-            self.update_tone_state()
+        # # SOLVE DILATION & ACTIVATION (INCREMENTAL)
+        # ! +1 so that this steps at the end of the wk time-window 
+        # ! required for the time-averaging of the coupled parameters
+        if not (step + 1) % self.step_tone:
+            self.update_tone_state(
+                self._T_sum / self._nacc,
+                self._tau_sum / self._nacc
+            )
             self.tone.solve()
+            self._reset_accumulators()
 
         # # UPDATE TIME
         self.t += self.dt
         
 
-    def update_windkessel_inflow(self):
-        new_root = self.rc.compute_value(self.t)
-        self.wk.update_root_pressure( new_root )
+    def update_windkessel_inflow(self, pressure=None):
+        if pressure is None:
+            pressure = self.rc.compute_value(self.t)
+
+        self.wk.update_root_pressure(pressure)
 
 
-    def update_tone_state(self):
-
-        # get values from windkessel
-        k       = self.wk.Nmid
-        st      = self.wk.generation_state()
-        tension = st['tension'][k:]
-        shear   = st['tau'][k:]
+    def update_tone_state(self, tension=None, shear=None):
+        # get values from windkessel (if not given)
+        if tension is None:
+            k       = self.wk.Nmid
+            st      = self.wk.generation_state()
+            tension = st['tension'][k:]
+            shear   = st['tau'][k:]
 
         # set values with unit conversion (SI to cgs)
         self.tone.T_cur    = tension * PA_PER_M_TO_DYN_PER_CM
@@ -219,6 +252,15 @@ class WindkesselTone(BaseSolver):
 
         # time-dependent sna term
         self.tone.csna = self.sna.compute_value(self.t)
+
+
+    def _reset_accumulators(self):
+        self._T_sum, self._tau_sum, self._nacc = 0.0, 0.0, 0
+
+
+# # ############################ ################# ##########################
+# # ############################ GETTERS & SETTERS ##########################
+# # ############################ ################# ##########################
 
 
     @property

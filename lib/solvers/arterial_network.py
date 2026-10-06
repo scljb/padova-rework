@@ -188,14 +188,18 @@ class ArterialNetwork(BaseSolver):
 
             pbar.set_postfix(t=self._postfix())
 
+            # # UPDATE ROOT CONDITION
+            self.update_root_condition(step)
+
             # # SOLVE COUPLED SYSTEM
             self.step(step, write=True)
 
+            # # UPDATE JUNCTION & TERMINAL CONDITIONS
+            self.update_junction_condition()
+            self.update_terminal_condition(step)
+
 
     def step(self, step, write=False):
-
-        # # UPDATE ROOT CONDITION
-        self.update_root_condition(step)
 
         # # SOLVE EACH ARTERIAL SYSTEM
         for idx in self.local_arteries:
@@ -217,11 +221,6 @@ class ArterialNetwork(BaseSolver):
 
             # ? check stability
             check_stability(idx, artery, self.dt, disp=False)
-
-
-        # # UPDATE JUNCTION & TERMINAL CONDITIONS
-        self.update_junction_condition()
-        self.update_terminal_condition(step)
 
         # # UPDATE TIME
         self.t += self.dt
@@ -253,30 +252,31 @@ class ArterialNetwork(BaseSolver):
 
     def update_junction_condition(self):
 
-        for pid, dids in self.local_parents.items():
+        for pid, dids in self.parents.items():
                         
             p_rank  = self.arteries_to_rank[pid]
             d_ranks = [self.arteries_to_rank[d] for d in dids]
 
-            # ? check if the current rank is involved in this junction
+            # ? skip when this rank is not involved
             if not ( (self.rank == p_rank) or (self.rank in d_ranks) ):
-                return
+                continue
 
-            # ? ranks owning the parent: receive -> solve -> send -> apply
+            # ? ranks owning the parent: receive -> solve -> send/apply
             if self.rank == p_rank:
                 self.junction_parent_solver(pid, dids, d_ranks)
-                return 
+                continue 
 
-            # ? ranks owning a daughter: send -> receive -> apply
-            for did, rid in zip(dids, d_ranks):
-                #print(did)  # ! check if this is actually a scalar or vector
-                if self.rank == rid:
-                    self.junction_daughter_helper(self.arteries, did, p_rank)
+            # ? ranks owning daughter(s): send -> receive -> apply
+            owned = [did for did, rid in zip(dids, d_ranks) if rid == self.rank]
+
+            for did in owned:
+                self.junction_daughter_send(did, p_rank)
+
+            for did in owned:
+                self.junction_daughter_apply(did, p_rank)
 
 
     def junction_parent_solver(self, pid, dids, d_ranks):
-
-        dx = self.arteries[pid].dx
 
         # # GET INFLOW SOLUTIONS FOR DAUGHTER(S)
         daughters = [None] * len(dids)
@@ -284,8 +284,9 @@ class ArterialNetwork(BaseSolver):
 
             if rid == self.rank:
                 # Local daughter
+                ddx = self.arteries[did].dx
                 daughters[i] = (
-                    self.arteries[did].probe_spatial_solutions(dx),
+                    self.arteries[did].probe_spatial_solutions(ddx),
                     self.arteries[did].probe_spatial_properties(0.0)
                 )
 
@@ -295,9 +296,10 @@ class ArterialNetwork(BaseSolver):
 
 
         # # GET OUTFLOW DATA FOR PARENT
+        pdx = self.arteries[pid].dx
         L = self.arteries[pid].L
         parent = (
-            self.arteries[pid].probe_spatial_solutions(L-dx),
+            self.arteries[pid].probe_spatial_solutions(L-pdx),
             self.arteries[pid].probe_spatial_properties(L)
         )
 
@@ -307,19 +309,18 @@ class ArterialNetwork(BaseSolver):
             *daughters,
             ids=(pid, *dids)
         )
-        p, d1, d2 = solution
+        p_sol, *d_sol = solution
 
         # # APPLY SOLUTIONS
         # ? apply area solution to parent
-        As = p[0]
-        self.arteries[pid].outlet.assign(As)
+        self.arteries[pid].outlet.assign(p_sol[0])
 
-        # ? apply velocity solutions to daughter(s)
-        daughter_velocities = [ d1[1], d2[1] ]
-        for vel, did, rid in zip(daughter_velocities, dids, d_ranks):
+        # ? velocity solutions to daughter(s). zip truncates to len(dids), so a
+        # ? pass-through junction ignores any padding entry from junction_solve
+        for sol, did, rid in zip(d_sol, dids, d_ranks):
             # velocity is None, the daughter does not exist
-            if vel is None:
-                continue
+            vel = None if sol is None else sol[1]
+            if vel is None: continue
 
             if rid == self.rank:
                 # Local apply
@@ -329,24 +330,24 @@ class ArterialNetwork(BaseSolver):
                 self.comm.send(vel, dest=rid, tag=did)
 
 
-    def junction_daughter_helper(self, did, p_rank):
-        '''
-        Only used in parallelised networks.
-        '''
-
+    def junction_daughter_send(self, did, p_rank):
         dx = self.arteries[did].dx
 
-        # # GET ROOT BOUNDARY VARIABLES & SEND TO PARENT
+        # ? get parameters at root
         data = (
             self.arteries[did].probe_spatial_solutions(dx),
             self.arteries[did].probe_spatial_properties(0.0)
         )
+
+        # ? send to parent
         self.comm.send(data, dest=p_rank, tag=did)
 
-        # # RECIEVE UPDATED SOLUTION
+
+    def junction_daughter_apply(self, did, p_rank):
+        # ? recieve the solution from parent
         vel = self.comm.recv(source=p_rank, tag=did)
 
-        # # APPLY SOLUTION
+        # ? apply solution
         self.arteries[did].inlet.assign(vel)
 
 

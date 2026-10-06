@@ -27,7 +27,8 @@ class BaseSolver:
             args=None, 
             comm=None, 
             io=None,
-            tend=None
+            tend=None,
+            extras=None
     ):
 
         self.CLARGS = args       # command-line arguments
@@ -35,7 +36,6 @@ class BaseSolver:
         self.configure_mpi(comm)
 
         if io is None:
-
             # ? read input files
             self.tend = solver_args['time']
             self.read_input_file(input_path, solver_args)
@@ -44,16 +44,17 @@ class BaseSolver:
             self.rc = TimeFunction(inflow_params)
 
         else:
-
+            # ? parent end time and io 
             self.tend = tend
             self.io   = io
 
+            # ? extra solver arguments given by parent solver
+            self.extras = extras
+
+
+        # ? create solver, check required attributes
         self.create_system()
         self._check_required_attrs()
-
-        # ? only needed on top-level solver
-        # if io is None:
-        #     self.m_attrs = self.get_model_dict(a=self)
 
 
     def create_system(self):
@@ -184,7 +185,7 @@ class BaseSolver:
 
 
     @staticmethod
-    def extract_values(source_dict, keys, ii=0):
+    def extract_by_keys(source_dict, keys, ii=0):
         '''
         Extract single values (indexed by ii) for the given keys from a dict
         of arrays.
@@ -198,7 +199,7 @@ class BaseSolver:
     
 
     @staticmethod
-    def extract_all_values(source_dict, ii=0):
+    def extract_all_keys(source_dict, ii=0):
         '''
         Extract single values from a dict of arrays (indexed by ii).
         '''

@@ -26,7 +26,7 @@ class VarWKIO(BaseIO):
                 res.write("NSTP \tTIME \tpcap \tqin \tqout\n")
 
             res.write(
-                f'{step} \t{time:.6f} \t{pcap:.8f} \t{qin:.8f} \t{qout:.8f}\n'
+                f'{step} \t{time:.6f} \t{pcap:.8f} \t{qin:.8e} \t{qout:.8e}\n'
             )
 
         # ? tree properties

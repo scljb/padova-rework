@@ -92,7 +92,7 @@ class SkeletalMuscle(BaseSolver):
         # # COMPUTE STEADY STATE MUSCLE OXYGENATION
         self.O2.steady_state_solve()
 
-        # ? write initial condition
+        # ? write initial solution
         if not called:
             self.m_attrs = self.get_model_dict(a=self)
             self.io.write_solutions(-1, 0, **self.m_attrs)

@@ -61,8 +61,8 @@ class WindkesselMuscle(BaseSolver):
         self.dt = min( [ self.wkt.dt, self.mus.dt ] ) #  time step size
         self.Nt = round( self.tend / self.dt )        # number of steps
 
-        self.wkt_step_increment = round( self.wkt.dt / self.dt )
-        self.mus_step_increment = round( self.mus.dt / self.dt )
+        self.step_wkt = round( self.wkt.dt / self.dt )
+        self.step_mus = round( self.mus.dt / self.dt )
 
 
     def initialise_solver(self, called=False):
@@ -79,7 +79,7 @@ class WindkesselMuscle(BaseSolver):
         # ? set basal tone using steady state oxygen
         self.wkt.tone.set_basal_state()
 
-        # ? write initial condition
+        # ? write initial solution
         if not called:
             self.m_attrs = self.get_model_dict(a=self)
             self.io.write_solutions(-1, 0, **self.m_attrs)
@@ -87,7 +87,38 @@ class WindkesselMuscle(BaseSolver):
 
     def step(self, step):
 
-        pass
+        # # SOLVE SYSTEMS
+        # ? windkessel + tone model
+        if not step % self.step_wkt:
+
+            if not step % self.wkt.step_wk:
+                self.update_windkessel_inflow()
+                self.wk.apply_dilation(self.tone.lmbda)
+                self.wk.solve()
+
+            if not step % self.wkt.step_tone:
+                self.update_tone_state()
+                self.tone.solve()
+
+
+            self.wkt.t += self.wkt.dt
+            
+
+        # ? oxygen + metabolism model
+        if not step % self.step_mus:
+            self.mus.O2.solve()
+            self.mus.update_oxygen_utilisation()
+            self.mus.CM.solve()
+            self.mus.t += self.mus.dt
+
+
+        # # UPDATE TIME
+        self.t += self.dt
+        
+
+    def update_windkessel_inflow(self):
+        new_root = self.rc.compute_value(self.t)
+        self.wkt.wk.update_root_pressure( new_root )
 
 
     def update_tone_state(self):
